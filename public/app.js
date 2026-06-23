@@ -39,6 +39,10 @@ const fmt = (v) => {
   return Number.isFinite(n) ? n.toFixed(2) + " €" : (v || "—");
 };
 
+// Affichage des tarifs (prix + remise). Masqué pour l'instant, sur demande.
+// Repasser à true pour réafficher la grille de prix.
+const SHOW_PRICES = false;
+
 // Échappement HTML : aucune donnée (réponse du service ou saisie) n'est injectée
 // brute en innerHTML -> protège contre le XSS (et donc le vol du jeton de session).
 const esc = (s) =>
@@ -231,7 +235,7 @@ function dispoCard(it, quantite = 1) {
         .join("")}</div>`
     : "";
 
-  const prices = (it.prixVenteNetHT || it.prixVenteNetTTC)
+  const prices = (SHOW_PRICES && (it.prixVenteNetHT || it.prixVenteNetTTC))
     ? `<div class="rc-prices">
         <div class="price"><label>Achat brut HT</label><span class="v">${esc(fmt(it.prixAchatBrutHT))}</span></div>
         <div class="price"><label>Vente brut HT</label><span class="v">${esc(fmt(it.prixVenteBrutHT))}</span></div>
