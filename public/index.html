@@ -23,19 +23,13 @@
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="dispo">Disponibilité</button>
-    <button class="tab" data-tab="catalogue">Catalogue</button>
-  </nav>
-
   <main>
     <!-- ============ DISPONIBILITÉ ============ -->
     <section id="tab-dispo" class="panel active">
       <div class="search-card">
         <div class="field">
           <label>Marque</label>
-          <input id="d-marque" list="marques-list" placeholder="ex. VALEO" autocomplete="off" />
-          <datalist id="marques-list"></datalist>
+          <input id="d-marque" placeholder="ex. VALEO" autocomplete="off" />
         </div>
         <div class="field">
           <label>Référence</label>
@@ -49,28 +43,6 @@
       </div>
 
       <div id="dispo-results" class="results"></div>
-    </section>
-
-    <!-- ============ CATALOGUE ============ -->
-    <section id="tab-catalogue" class="panel">
-      <div class="catalogue-layout">
-        <aside class="brands">
-          <div class="brands-head">
-            <h2>Marques</h2>
-            <label class="filtre">
-              <input type="checkbox" id="filtre-mcode" /> avec MCODE
-            </label>
-          </div>
-          <ul id="brands-list" class="brands-list"></ul>
-        </aside>
-        <div class="refs">
-          <div class="refs-head">
-            <h2 id="refs-title">Sélectionne une marque</h2>
-            <span id="refs-count" class="badge"></span>
-          </div>
-          <div id="refs-table" class="refs-table"></div>
-        </div>
-      </div>
     </section>
   </main>
 

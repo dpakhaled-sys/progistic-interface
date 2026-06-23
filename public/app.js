@@ -39,17 +39,6 @@ const fmt = (v) => {
   return Number.isFinite(n) ? n.toFixed(2) + " €" : (v || "—");
 };
 
-/* ---------- Onglets ---------- */
-$$(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    $$(".tab").forEach((t) => t.classList.remove("active"));
-    $$(".panel").forEach((p) => p.classList.remove("active"));
-    tab.classList.add("active");
-    $("#tab-" + tab.dataset.tab).classList.add("active");
-    if (tab.dataset.tab === "catalogue" && !brandsLoaded) loadBrands();
-  });
-});
-
 /* ---------- Statut connexion ---------- */
 async function checkStatus() {
   try {
@@ -231,84 +220,9 @@ function dispoCard(it, quantite = 1) {
   </div>`;
 }
 
-/* ---------- Catalogue : marques ---------- */
-let brandsLoaded = false;
-$("#filtre-mcode").addEventListener("change", () => { brandsLoaded = false; loadBrands(); });
-
-async function loadBrands() {
-  const list = $("#brands-list");
-  list.innerHTML = `<li class="loading">Chargement</li>`;
-  try {
-    const filtre = $("#filtre-mcode").checked ? "OUI" : "NON";
-    const data = await api("/api/marques?filtre=" + filtre);
-    brandsLoaded = true;
-
-    // Alimente aussi l'autocomplétion de l'onglet dispo
-    $("#marques-list").innerHTML = data.marques
-      .map((m) => `<option value="${m.nom}">`).join("");
-
-    list.innerHTML = data.marques.length
-      ? data.marques.map((m) => `
-        <li data-marque="${m.nom}">
-          <span class="bm-name">${m.nom}</span>
-          <span class="bm-code">${m.mcode || ""}</span>
-        </li>`).join("")
-      : `<li class="empty">Aucune marque.</li>`;
-
-    list.querySelectorAll("li[data-marque]").forEach((li) =>
-      li.addEventListener("click", () => {
-        list.querySelectorAll("li").forEach((x) => x.classList.remove("active"));
-        li.classList.add("active");
-        loadReferences(li.dataset.marque);
-      })
-    );
-  } catch (e) {
-    list.innerHTML = `<li class="error">${e.message}</li>`;
-  }
-}
-
-/* ---------- Catalogue : références ---------- */
-async function loadReferences(marque) {
-  $("#refs-title").textContent = marque;
-  $("#refs-count").textContent = "";
-  const table = $("#refs-table");
-  table.innerHTML = `<div class="loading">Chargement des références</div>`;
-  try {
-    const data = await api("/api/references?marque=" + encodeURIComponent(marque) + "&quantite=50");
-    $("#refs-count").textContent = data.count + " réf.";
-    table.innerHTML = data.references.length
-      ? data.references.map((r) => `
-        <div class="ref-row">
-          <div>
-            <div class="rr-ref">${r.reference}</div>
-            <div class="rr-dgn">${r.designation || ""}</div>
-            <div class="rr-code">${r.codeArticle || ""}</div>
-          </div>
-          <button class="btn-ghost" data-m="${marque}" data-r="${r.reference}">Voir dispo →</button>
-        </div>`).join("")
-      : `<div class="empty">Aucune référence.</div>`;
-
-    table.querySelectorAll(".btn-ghost").forEach((b) =>
-      b.addEventListener("click", () => {
-        $("#d-marque").value = b.dataset.m;
-        $("#d-reference").value = b.dataset.r;
-        $("#d-quantite").value = 1;
-        $$(".tab").forEach((t) => t.classList.remove("active"));
-        $$(".panel").forEach((p) => p.classList.remove("active"));
-        document.querySelector('.tab[data-tab="dispo"]').classList.add("active");
-        $("#tab-dispo").classList.add("active");
-        checkDispo();
-      })
-    );
-  } catch (e) {
-    table.innerHTML = `<div class="error">${e.message}</div>`;
-  }
-}
-
 /* ---------- Init ---------- */
 if (TOKEN) {
   const logoutBtn = $("#logout");
   if (logoutBtn) logoutBtn.addEventListener("click", logout);
   checkStatus();
-  loadBrands(); // précharge l'autocomplétion des marques
 }
