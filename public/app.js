@@ -66,18 +66,17 @@ async function checkStatus() {
 
 /* ---------- Disponibilité ---------- */
 $("#d-search").addEventListener("click", checkDispo);
-["d-marque", "d-reference", "d-quantite"].forEach((id) =>
+["d-reference", "d-quantite"].forEach((id) =>
   $("#" + id).addEventListener("keydown", (e) => e.key === "Enter" && checkDispo())
 );
 
 async function checkDispo() {
-  const marque = $("#d-marque").value.trim();
   const reference = $("#d-reference").value.trim();
   const quantite = $("#d-quantite").value || 1;
   const box = $("#dispo-results");
 
-  if (!marque || !reference) {
-    box.innerHTML = `<div class="error">Renseigne au moins la marque et la référence.</div>`;
+  if (!reference) {
+    box.innerHTML = `<div class="error">Renseigne la référence.</div>`;
     return;
   }
 
@@ -86,20 +85,55 @@ async function checkDispo() {
   box.innerHTML = `<div class="loading">Interrogation du service</div>`;
 
   try {
+    // On interroge par référence seule : le service résout la/les marque(s).
     const data = await api("/api/dispo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ articles: [{ marque, reference, quantite }] }),
+      body: JSON.stringify({ articles: [{ reference, quantite }] }),
     });
-    box.innerHTML = data.items.length
-      ? data.items.map((it) => dispoCard(it, quantite)).join("")
-      : `<div class="empty">Aucun résultat.</div>`;
-    wireOrderButtons(box);
+    renderDispo(data.items || [], quantite, box);
   } catch (e) {
-    box.innerHTML = `<div class="error">${e.message}</div>`;
+    box.innerHTML = `<div class="error">${esc(e.message)}</div>`;
   } finally {
     btn.disabled = false;
   }
+}
+
+// 0 résultat → message ; 1 marque → on affiche direct ; plusieurs → on demande la marque.
+function renderDispo(items, quantite, box) {
+  const found = items.filter((it) => it.niveau !== "unknown");
+
+  if (!found.length) {
+    box.innerHTML = `<div class="empty">Référence inconnue — aucune correspondance.</div>`;
+    return;
+  }
+
+  if (found.length === 1) {
+    box.innerHTML = dispoCard(found[0], quantite);
+    wireOrderButtons(box);
+    return;
+  }
+
+  // Plusieurs marques pour cette référence → sélection.
+  const buttons = found
+    .map((it, i) => `<button class="brand-pick" data-i="${i}">${esc(it.marque || "—")}</button>`)
+    .join("");
+  box.innerHTML = `
+    <div class="brand-choice">
+      <p>Plusieurs marques pour <b>${esc(found[0].reference)}</b> — choisis la bonne :</p>
+      <div class="brand-pick-row">${buttons}</div>
+    </div>
+    <div id="chosen-card"></div>`;
+
+  const chosen = box.querySelector("#chosen-card");
+  box.querySelectorAll(".brand-pick").forEach((b) =>
+    b.addEventListener("click", () => {
+      box.querySelectorAll(".brand-pick").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      chosen.innerHTML = dispoCard(found[Number(b.dataset.i)], quantite);
+      wireOrderButtons(chosen);
+    })
+  );
 }
 
 /* ---------- Commande (CDE) — avec confirmation explicite ---------- */

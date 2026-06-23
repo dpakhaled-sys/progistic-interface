@@ -218,6 +218,24 @@ main { padding: 28px; max-width: 1120px; margin: 0 auto; }
 .price .v { font-family: var(--mono); font-size: 15px; font-weight: 500; }
 .price .v.hl { color: var(--accent-soft); }
 
+/* ---------- Choix de marque (plusieurs marques pour une réf) ---------- */
+.brand-choice {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow);
+}
+.brand-choice p { margin: 0 0 12px; color: var(--ink-dim); font-size: 14px; }
+.brand-choice b { color: var(--ink); font-family: var(--mono); }
+.brand-pick-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.brand-pick {
+  background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 9px; padding: 9px 16px; cursor: pointer;
+  font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .02em;
+  transition: all .12s;
+}
+.brand-pick:hover { background: rgba(27,157,217,.1); }
+.brand-pick.active { background: var(--accent); color: #fff; }
+#chosen-card:not(:empty) { margin-top: 14px; }
+
 /* ---------- Commande (CDE) ---------- */
 .rc-actions { grid-column: 1 / -1; }
 .btn-order {
