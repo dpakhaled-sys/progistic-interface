@@ -54,9 +54,6 @@ const esc = (s) =>
 async function checkStatus() {
   try {
     const cfg = await api("/api/config");
-    $("#foot-mode").textContent = cfg.mock
-      ? "Mode DÉMO (données factices)"
-      : `LIVE → ${cfg.protocol}://${cfg.host}:${cfg.port}`;
     const acc = await api("/api/acces");
     $("#status-dot").className = "dot " + (acc.ok ? "ok" : "ko");
     $("#status-text").textContent = acc.ok
