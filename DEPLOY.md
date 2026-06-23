@@ -21,8 +21,8 @@ Le repo est déjà sur GitHub. Rien à builder (pas de framework, pas d'étape d
 | `WS_PATH` | `/` | |
 | `WS_PROTOCOL` | `http` | |
 | `CATALOGUE` | `AUTODATA` | |
-| `ID_GARAGE` | `24669` | |
-| `ID_CLIENT` | `24669` | |
+| `ID_GARAGE` | `24668` | 24668 = DPA2 (DESTOCK PIECES AUTO) |
+| `ID_CLIENT` | `24668` | (24669 = PRG / PRO-GISTIQUE) |
 | `WS_LOGIN` | `poste4` | |
 | `WS_PASSWORD` | *(le vrai mot de passe)* | secret |
 | `APP_USER` | *(identifiant fort)* | login interface |

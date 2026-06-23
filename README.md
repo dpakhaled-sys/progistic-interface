@@ -41,7 +41,7 @@ npm start                 # → http://localhost:3001
 | `WS_PATH` | chemin sur le serveur | `/` |
 | `WS_PROTOCOL` | `http` ou `https` | `http` |
 | `CATALOGUE` | catalogue interrogé dans l'`<Entete>` DISPO | `AUTODATA` |
-| `ID_GARAGE` / `ID_CLIENT` | identifiants `<Entete>` (souvent identiques) | `24669` |
+| `ID_GARAGE` / `ID_CLIENT` | client interrogé (24668 = DPA2, 24669 = PRG) | `24668` |
 | `WS_LOGIN` / `WS_PASSWORD` | identifiants des flux qui en ont besoin (ACCES…) | `poste4` / *(secret)* |
 | `APP_USER` / `APP_PASS` | identifiants de **connexion à l'interface** (à changer) | `progistique` / *(à changer)* |
 | `PORT` | port local de l'interface | `3001` |
