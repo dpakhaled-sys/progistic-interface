@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connexion · Pro-gistique</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <img class="login-logo" src="logo.png" alt="Pro-gistique" />
+    <h1 class="login-title">Connexion</h1>
+    <p class="login-sub">Accès à l'interface Web Service</p>
+    <form id="login-form">
+      <div class="field">
+        <label>Identifiant</label>
+        <input id="l-user" autocomplete="username" autofocus />
+      </div>
+      <div class="field">
+        <label>Mot de passe</label>
+        <input id="l-pass" type="password" autocomplete="current-password" />
+      </div>
+      <div id="l-error" class="login-error"></div>
+      <button class="btn-primary" type="submit">Se connecter</button>
+    </form>
+  </main>
+  <script src="login.js"></script>
+</body>
+</html>

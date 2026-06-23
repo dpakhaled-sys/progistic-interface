@@ -1,11 +1,37 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 
-async function api(path, opts) {
-  const res = await fetch(path, opts);
+// Garde d'accès : sans jeton, on repart vers la page de connexion.
+const TOKEN = sessionStorage.getItem("pg_token");
+if (!TOKEN) location.replace("login.html");
+
+function goToLogin() {
+  sessionStorage.removeItem("pg_token");
+  location.replace("login.html");
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: {
+      ...(opts.headers || {}),
+      Authorization: "Bearer " + (sessionStorage.getItem("pg_token") || ""),
+    },
+  });
+  if (res.status === 401) {
+    goToLogin();
+    throw new Error("Session expirée");
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Erreur serveur");
   return data;
+}
+
+function logout() {
+  fetch("/api/logout", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + (sessionStorage.getItem("pg_token") || "") },
+  }).finally(goToLogin);
 }
 
 const fmt = (v) => {
@@ -280,5 +306,9 @@ async function loadReferences(marque) {
 }
 
 /* ---------- Init ---------- */
-checkStatus();
-loadBrands(); // précharge l'autocomplétion des marques
+if (TOKEN) {
+  const logoutBtn = $("#logout");
+  if (logoutBtn) logoutBtn.addEventListener("click", logout);
+  checkStatus();
+  loadBrands(); // précharge l'autocomplétion des marques
+}

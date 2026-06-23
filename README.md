@@ -43,6 +43,7 @@ npm start                 # → http://localhost:3001
 | `CATALOGUE` | catalogue interrogé dans l'`<Entete>` DISPO | `AUTODATA` |
 | `ID_GARAGE` / `ID_CLIENT` | identifiants `<Entete>` (souvent identiques) | `24669` |
 | `WS_LOGIN` / `WS_PASSWORD` | identifiants des flux qui en ont besoin (ACCES…) | `poste4` / *(secret)* |
+| `APP_USER` / `APP_PASS` | identifiants de **connexion à l'interface** (à changer) | `progistique` / *(à changer)* |
 | `PORT` | port local de l'interface | `3001` |
 | `MOCK` | `true` = démo, `false` = vrai service | `false` |
 
@@ -70,6 +71,12 @@ Liste des marques → 1ères références d'une marque (avec `CodeArticle`, dés
 
 ### Bandeau d'état (`Typedde=ACCES`)
 Vérifie l'accès au chargement et affiche le client résolu (ex. `PRG` / PRO-GISTIQUE).
+
+### Connexion (gate complet)
+Une **page de login** (`login.html`) protège l'accès. L'authentification ne masque pas
+seulement l'écran : **toutes les routes `/api/*` exigent un jeton** (émis par `POST /api/login`
+puis envoyé en `Authorization: Bearer …`). Comme l'API peut créer des commandes, un simple
+masque visuel ne suffirait pas. Identifiants configurés via `APP_USER` / `APP_PASS` (`.env`).
 
 ---
 

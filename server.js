@@ -2,6 +2,7 @@ import express from "express";
 import http from "node:http";
 import https from "node:https";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { XMLParser } from "fast-xml-parser";
 
@@ -22,6 +23,9 @@ const CFG = {
   password: process.env.WS_PASSWORD || "",
   port_local: Number(process.env.PORT || 3000),
   mock: String(process.env.MOCK || "true").toLowerCase() === "true",
+  // Identifiants d'accès à l'interface (page de connexion)
+  appUser: process.env.APP_USER || "progistique",
+  appPass: process.env.APP_PASS || "progistique",
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -386,6 +390,41 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const wantsDebug = (req) => req.query.debug === "1";
+
+// ---------------------------------------------------------------------------
+// Authentification — protège la page ET l'API (l'API peut créer des commandes,
+// donc un simple masque visuel ne suffirait pas).
+// ---------------------------------------------------------------------------
+const sessions = new Set(); // jetons valides, en mémoire (réinitialisés au redémarrage)
+
+const safeEqual = (a, b) => {
+  const ba = Buffer.from(String(a ?? ""));
+  const bb = Buffer.from(String(b ?? ""));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+};
+const bearer = (req) => (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+
+app.post("/api/login", (req, res) => {
+  const { user, pass } = req.body || {};
+  if (safeEqual(user, CFG.appUser) && safeEqual(pass, CFG.appPass)) {
+    const token = crypto.randomBytes(24).toString("hex");
+    sessions.add(token);
+    return res.json({ ok: true, token });
+  }
+  res.status(401).json({ ok: false, error: "Identifiant ou mot de passe incorrect" });
+});
+
+app.post("/api/logout", (req, res) => {
+  sessions.delete(bearer(req));
+  res.json({ ok: true });
+});
+
+// Toutes les autres routes /api/* exigent un jeton valide.
+app.use("/api", (req, res, next) => {
+  if (req.path === "/login" || req.path === "/logout") return next();
+  if (sessions.has(bearer(req))) return next();
+  res.status(401).json({ error: "Non authentifié" });
+});
 
 app.get("/api/config", (_req, res) => {
   res.json({
