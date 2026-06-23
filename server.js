@@ -23,9 +23,10 @@ const CFG = {
   password: process.env.WS_PASSWORD || "",
   port_local: Number(process.env.PORT || 3000),
   mock: String(process.env.MOCK || "true").toLowerCase() === "true",
-  // Identifiants d'accès à l'interface (page de connexion)
-  appUser: process.env.APP_USER || "progistique",
-  appPass: process.env.APP_PASS || "progistique",
+  // Identifiants d'accès à l'interface (page de connexion).
+  // Pas de valeur par défaut devinable : si non définis, la connexion est désactivée.
+  appUser: process.env.APP_USER || "",
+  appPass: process.env.APP_PASS || "",
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -386,6 +387,22 @@ function parseCommande(raw) {
 // API REST
 // ---------------------------------------------------------------------------
 const app = express();
+app.set("trust proxy", true); // derrière le proxy Vercel : req.ip = vraie IP cliente
+
+// En-têtes de sécurité (limitent l'impact d'un éventuel XSS / clickjacking).
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; " +
+      "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  );
+  next();
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -430,12 +447,55 @@ function verifyToken(token) {
   }
 }
 
+// Anti-force-brute : 5 échecs par IP -> blocage 15 min.
+// En mémoire : efficace sur un host always-on ; best-effort sur Vercel serverless
+// (chaque instance a son compteur -> pour un blocage partagé, utiliser Vercel KV / Upstash).
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_BLOCK_MS = 15 * 60 * 1000;
+const loginAttempts = new Map(); // ip -> { fails, blockedUntil }
+
 app.post("/api/login", (req, res) => {
+  const ip = req.ip || "?";
+  const now = Date.now();
+  const rec = loginAttempts.get(ip);
+
+  // Bloqué ?
+  if (rec?.blockedUntil && rec.blockedUntil > now) {
+    const mins = Math.ceil((rec.blockedUntil - now) / 60000);
+    return res
+      .status(429)
+      .json({ ok: false, error: `Trop de tentatives. Réessayez dans ${mins} min.` });
+  }
+
   const { user, pass } = req.body || {};
-  if (safeEqual(user, CFG.appUser) && safeEqual(pass, CFG.appPass)) {
+  const credsOk =
+    CFG.appUser && CFG.appPass &&
+    safeEqual(user, CFG.appUser) && safeEqual(pass, CFG.appPass);
+
+  if (credsOk) {
+    loginAttempts.delete(ip);
     return res.json({ ok: true, token: signToken(String(user)) });
   }
-  res.status(401).json({ ok: false, error: "Identifiant ou mot de passe incorrect" });
+
+  // Échec : on incrémente (en repartant de 0 si un blocage précédent a expiré).
+  const prevFails = rec && (!rec.blockedUntil || rec.blockedUntil <= now) ? rec.fails : 0;
+  const fails = prevFails + 1;
+  const left = LOGIN_MAX_FAILS - fails;
+
+  // 5e échec : on arme le blocage (les tentatives suivantes seront refusées 15 min),
+  // mais cette tentative-ci renvoie encore l'erreur de mot de passe.
+  if (left <= 0) {
+    loginAttempts.set(ip, { fails, blockedUntil: now + LOGIN_BLOCK_MS });
+    return res.status(401).json({
+      ok: false,
+      error: "Identifiant ou mot de passe incorrect. Connexion bloquée 15 min.",
+    });
+  }
+  loginAttempts.set(ip, { fails });
+  res.status(401).json({
+    ok: false,
+    error: `Identifiant ou mot de passe incorrect (${left} tentative${left > 1 ? "s" : ""} restante${left > 1 ? "s" : ""}).`,
+  });
 });
 
 // Jetons sans état : la déconnexion est gérée côté client (suppression du jeton).

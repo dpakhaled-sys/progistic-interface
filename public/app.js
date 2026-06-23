@@ -39,6 +39,13 @@ const fmt = (v) => {
   return Number.isFinite(n) ? n.toFixed(2) + " €" : (v || "—");
 };
 
+// Échappement HTML : aucune donnée (réponse du service ou saisie) n'est injectée
+// brute en innerHTML -> protège contre le XSS (et donc le vol du jeton de session).
+const esc = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+
 /* ---------- Statut connexion ---------- */
 async function checkStatus() {
   try {
@@ -124,7 +131,7 @@ async function startOrder(btn) {
     zone.innerHTML = `
       <div class="order-confirm">
         <p>${warn}</p>
-        <p class="oc-line">Commander <b>${quantite} × ${marque} ${reference}</b> ?</p>
+        <p class="oc-line">Commander <b>${esc(quantite)} × ${esc(marque)} ${esc(reference)}</b> ?</p>
         <div class="oc-actions">
           <button class="btn-primary oc-go">Confirmer la commande</button>
           <button class="btn-ghost oc-cancel">Annuler</button>
@@ -151,15 +158,15 @@ async function confirmOrder(zone, article) {
     const lignes = (r.lignes || [])
       .map(
         (l) =>
-          `<li class="${l.ok ? "ok" : "ko"}">${l.marque} ${l.reference} — ${
+          `<li class="${l.ok ? "ok" : "ko"}">${esc(l.marque)} ${esc(l.reference)} — ${esc(
             l.text || (l.ok ? "Ligne intégrée" : "Ligne ignorée")
-          }</li>`
+          )}</li>`
       )
       .join("");
     zone.innerHTML = `
       <div class="order-done ${r.ok ? "ok" : "ko"}">
         <div class="od-head">${
-          r.numCDE ? `Commande créée · <b>${r.numCDE}</b>` : `Réponse : ${r.text || r.code}`
+          r.numCDE ? `Commande créée · <b>${esc(r.numCDE)}</b>` : `Réponse : ${esc(r.text || r.code)}`
         }</div>
         <ul class="od-lines">${lignes}</ul>
       </div>`;
@@ -171,9 +178,9 @@ async function confirmOrder(zone, article) {
 function dispoCard(it, quantite = 1) {
   const lvl = it.niveau || "unknown";
   const stockTxt = [
-    it.stock !== "" && it.stock != null ? `réel : <b>${it.stock}</b>` : "",
+    it.stock !== "" && it.stock != null ? `réel : <b>${esc(it.stock)}</b>` : "",
     it.stockTheo !== "" && it.stockTheo != null && it.stockTheo !== it.stock
-      ? `théo : <b>${it.stockTheo}</b>` : "",
+      ? `théo : <b>${esc(it.stockTheo)}</b>` : "",
   ].filter(Boolean).join(" · ");
   const stock = stockTxt ? `<div class="rc-stock">Stock ${stockTxt}</div>` : "";
 
@@ -186,31 +193,31 @@ function dispoCard(it, quantite = 1) {
   ].filter(Boolean);
   const meta = metaRows.length
     ? `<div class="rc-meta">${metaRows
-        .map(([k, v]) => `<div class="meta"><label>${k}</label><span>${v}</span></div>`)
+        .map(([k, v]) => `<div class="meta"><label>${esc(k)}</label><span>${esc(v)}</span></div>`)
         .join("")}</div>`
     : "";
 
   const prices = (it.prixVenteNetHT || it.prixVenteNetTTC)
     ? `<div class="rc-prices">
-        <div class="price"><label>Achat brut HT</label><span class="v">${fmt(it.prixAchatBrutHT)}</span></div>
-        <div class="price"><label>Vente brut HT</label><span class="v">${fmt(it.prixVenteBrutHT)}</span></div>
-        <div class="price"><label>Vente net HT</label><span class="v hl">${fmt(it.prixVenteNetHT)}</span></div>
-        <div class="price"><label>Vente net TTC</label><span class="v hl">${fmt(it.prixVenteNetTTC)}</span></div>
-        <div class="price"><label>Remise</label><span class="v">${it.remise ? it.remise + " %" : "—"}</span></div>
+        <div class="price"><label>Achat brut HT</label><span class="v">${esc(fmt(it.prixAchatBrutHT))}</span></div>
+        <div class="price"><label>Vente brut HT</label><span class="v">${esc(fmt(it.prixVenteBrutHT))}</span></div>
+        <div class="price"><label>Vente net HT</label><span class="v hl">${esc(fmt(it.prixVenteNetHT))}</span></div>
+        <div class="price"><label>Vente net TTC</label><span class="v hl">${esc(fmt(it.prixVenteNetTTC))}</span></div>
+        <div class="price"><label>Remise</label><span class="v">${it.remise ? esc(it.remise) + " %" : "—"}</span></div>
       </div>` : "";
   // Bouton commande seulement si la pièce peut être commandée (dispo ou rupture autorisée).
   const orderable = lvl === "ok" || lvl === "warn";
   const orderBtn = orderable
-    ? `<button class="btn-order" data-m="${it.marque}" data-r="${it.reference}" data-q="${quantite}">Commander ${quantite}</button>`
+    ? `<button class="btn-order" data-m="${esc(it.marque)}" data-r="${esc(it.reference)}" data-q="${esc(quantite)}">Commander ${esc(quantite)}</button>`
     : "";
 
   return `<div class="result-card ${lvl}">
     <div class="rc-id">
-      <div class="rc-marque">${it.marque}</div>
-      <div class="rc-ref">${it.reference}</div>
+      <div class="rc-marque">${esc(it.marque)}</div>
+      <div class="rc-ref">${esc(it.reference)}</div>
     </div>
     <div class="rc-status">
-      <span class="rc-badge ${lvl}">${it.statut}</span>
+      <span class="rc-badge ${lvl}">${esc(it.statut)}</span>
       ${stock}
     </div>
     ${meta}

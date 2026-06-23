@@ -1,6 +1,17 @@
 const form = document.getElementById("login-form");
 const errBox = document.getElementById("l-error");
 
+// Bouton afficher / masquer le mot de passe
+const passInput = document.getElementById("l-pass");
+const toggle = document.getElementById("toggle-pass");
+toggle.addEventListener("click", () => {
+  const show = passInput.type === "password";
+  passInput.type = show ? "text" : "password";
+  toggle.textContent = show ? "Masquer" : "Afficher";
+  toggle.setAttribute("aria-label", show ? "Masquer le mot de passe" : "Afficher le mot de passe");
+  passInput.focus();
+});
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   errBox.textContent = "";

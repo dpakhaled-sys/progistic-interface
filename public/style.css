@@ -83,6 +83,15 @@ body {
 .login-title { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: .02em; margin: 0 0 4px; }
 .login-sub { color: var(--ink-dim); font-size: 13px; margin: 0 0 24px; }
 .login-card form { display: grid; gap: 16px; text-align: left; }
+.pass-wrap { position: relative; display: flex; align-items: center; }
+.pass-wrap input { flex: 1; padding-right: 88px; }
+.pass-toggle {
+  position: absolute; right: 6px;
+  background: none; border: none; cursor: pointer;
+  color: var(--accent); font-family: var(--sans); font-size: 12.5px; font-weight: 600;
+  padding: 6px 8px; border-radius: 6px;
+}
+.pass-toggle:hover { background: var(--panel-2); }
 .login-card .btn-primary { width: 100%; padding: 13px; font-size: 15px; margin-top: 4px; }
 .login-error { color: var(--ko); font-size: 13px; min-height: 4px; }
 .login-error:empty { display: none; }

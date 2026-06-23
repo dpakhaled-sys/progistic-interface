@@ -21,7 +21,10 @@
       </div>
       <div class="field">
         <label>Mot de passe</label>
-        <input id="l-pass" type="password" autocomplete="current-password" />
+        <div class="pass-wrap">
+          <input id="l-pass" type="password" autocomplete="current-password" />
+          <button type="button" id="toggle-pass" class="pass-toggle" aria-label="Afficher le mot de passe">Afficher</button>
+        </div>
       </div>
       <div id="l-error" class="login-error"></div>
       <button class="btn-primary" type="submit">Se connecter</button>
