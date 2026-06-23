@@ -395,7 +395,12 @@ const wantsDebug = (req) => req.query.debug === "1";
 // Authentification — protège la page ET l'API (l'API peut créer des commandes,
 // donc un simple masque visuel ne suffirait pas).
 // ---------------------------------------------------------------------------
-const sessions = new Set(); // jetons valides, en mémoire (réinitialisés au redémarrage)
+// Jeton SANS ÉTAT (signé HMAC) : pas de stockage serveur, donc compatible serverless
+// (Vercel) où chaque requête peut tomber sur une instance différente.
+// ⚠️ Sur Vercel : définir AUTH_SECRET, sinon chaque démarrage à froid régénère un
+//    secret aléatoire et invalide les jetons existants.
+const AUTH_SECRET = process.env.AUTH_SECRET || crypto.randomBytes(32).toString("hex");
+const TOKEN_TTL_MS = 12 * 3600 * 1000; // 12 h
 
 const safeEqual = (a, b) => {
   const ba = Buffer.from(String(a ?? ""));
@@ -404,25 +409,42 @@ const safeEqual = (a, b) => {
 };
 const bearer = (req) => (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
 
+function signToken(user) {
+  const payload = Buffer.from(
+    JSON.stringify({ u: user, exp: Date.now() + TOKEN_TTL_MS })
+  ).toString("base64url");
+  const sig = crypto.createHmac("sha256", AUTH_SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function verifyToken(token) {
+  if (!token || !token.includes(".")) return false;
+  const [payload, sig] = token.split(".");
+  const expected = crypto.createHmac("sha256", AUTH_SECRET).update(payload).digest("base64url");
+  if (!safeEqual(sig, expected)) return false;
+  try {
+    const { exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    return typeof exp === "number" && Date.now() < exp;
+  } catch {
+    return false;
+  }
+}
+
 app.post("/api/login", (req, res) => {
   const { user, pass } = req.body || {};
   if (safeEqual(user, CFG.appUser) && safeEqual(pass, CFG.appPass)) {
-    const token = crypto.randomBytes(24).toString("hex");
-    sessions.add(token);
-    return res.json({ ok: true, token });
+    return res.json({ ok: true, token: signToken(String(user)) });
   }
   res.status(401).json({ ok: false, error: "Identifiant ou mot de passe incorrect" });
 });
 
-app.post("/api/logout", (req, res) => {
-  sessions.delete(bearer(req));
-  res.json({ ok: true });
-});
+// Jetons sans état : la déconnexion est gérée côté client (suppression du jeton).
+app.post("/api/logout", (_req, res) => res.json({ ok: true }));
 
 // Toutes les autres routes /api/* exigent un jeton valide.
 app.use("/api", (req, res, next) => {
   if (req.path === "/login" || req.path === "/logout") return next();
-  if (sessions.has(bearer(req))) return next();
+  if (verifyToken(bearer(req))) return next();
   res.status(401).json({ error: "Non authentifié" });
 });
 
@@ -524,8 +546,14 @@ app.post("/api/commande", async (req, res) => {
   }
 });
 
-app.listen(CFG.port_local, () => {
-  console.log(`\n  Acrom Web Service UI`);
-  console.log(`  → http://localhost:${CFG.port_local}`);
-  console.log(`  Mode : ${CFG.mock ? "DÉMO (données factices)" : `LIVE → ${CFG.protocol}://${CFG.host}:${CFG.port}${CFG.wsPath}`}\n`);
-});
+// En local (ou tout host "always-on") on démarre le serveur. Sur Vercel, l'app est
+// utilisée comme fonction serverless (cf. api/[...path].js) : pas de listen.
+if (!process.env.VERCEL) {
+  app.listen(CFG.port_local, () => {
+    console.log(`\n  Acrom Web Service UI`);
+    console.log(`  → http://localhost:${CFG.port_local}`);
+    console.log(`  Mode : ${CFG.mock ? "DÉMO (données factices)" : `LIVE → ${CFG.protocol}://${CFG.host}:${CFG.port}${CFG.wsPath}`}\n`);
+  });
+}
+
+export default app;
