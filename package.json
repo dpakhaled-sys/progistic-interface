@@ -1,0 +1,15 @@
+{
+  "name": "acrom-webservice-ui",
+  "version": "1.0.0",
+  "description": "Interface web pour le Web Service XML Acrom / System Wone (references + disponibilites)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "fast-xml-parser": "^4.4.1"
+  }
+}

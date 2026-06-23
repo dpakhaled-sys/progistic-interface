@@ -1,0 +1,9 @@
+# Dépendances
+node_modules/
+
+# Secrets / config locale (contient identifiants + mot de passe du Web Service)
+.env
+
+# Logs & divers
+*.log
+.DS_Store
