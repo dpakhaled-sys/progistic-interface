@@ -324,6 +324,62 @@ main { padding: 28px; max-width: 1120px; margin: 0 auto; }
 }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ---------- Historique des commandes ---------- */
+.history-card {
+  margin-top: 26px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.history-head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+  padding: 16px 18px; border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.history-head h2 {
+  font-family: var(--display); font-size: 14px; font-weight: 700; margin: 0;
+  letter-spacing: .03em;
+  display: flex; align-items: center; gap: 10px;
+}
+.history-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.hist-tab {
+  background: transparent; border: 1px solid var(--line); color: var(--ink-dim);
+  border-radius: 999px; padding: 7px 14px; cursor: pointer;
+  font-family: var(--display); font-weight: 700; font-size: 12.5px; letter-spacing: .02em;
+  transition: all .12s;
+}
+.hist-tab:hover { border-color: var(--accent); color: var(--accent); }
+.hist-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.history-list { padding: 6px; }
+.hist-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 2fr 56px;
+  gap: 12px; align-items: center;
+  padding: 11px 14px; border-radius: 9px;
+}
+.hist-row:not(.hist-head):nth-child(even) { background: var(--bg-2); }
+.hist-head {
+  font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600;
+}
+.hc-when { font-family: var(--mono); font-size: 13px; color: var(--ink-dim); }
+.hc-ref { font-family: var(--mono); font-weight: 600; font-size: 14px; }
+.hc-dgn { color: var(--ink-dim); font-size: 13px; }
+.hc-qty { font-family: var(--mono); font-weight: 600; text-align: right; }
+.hist-head .hc-when,
+.hist-head .hc-ref,
+.hist-head .hc-dgn,
+.hist-head .hc-qty { font-family: var(--sans); font-size: 10.5px; color: var(--ink-faint); }
+
+@media (max-width: 720px) {
+  .hist-row { grid-template-columns: 96px 1fr 48px; }
+  .hc-dgn { display: none; }
+}
+
 /* ---------- États ---------- */
 .empty, .loading, .error {
   padding: 36px 20px; text-align: center; color: var(--ink-faint); font-size: 14px;

@@ -46,6 +46,22 @@
 
       <div id="dispo-results" class="results"></div>
     </section>
+
+    <!-- ============ HISTORIQUE DES COMMANDES ============ -->
+    <section id="historique" class="history-card">
+      <div class="history-head">
+        <h2>
+          Historique des commandes
+          <span id="history-count" class="badge"></span>
+        </h2>
+        <div class="history-tabs">
+          <button class="hist-tab active" data-period="day">Aujourd'hui</button>
+          <button class="hist-tab" data-period="week">Cette semaine</button>
+          <button class="hist-tab" data-period="month">Ce mois</button>
+        </div>
+      </div>
+      <div id="history-list" class="history-list"></div>
+    </section>
   </main>
 
   <script src="app.js"></script>

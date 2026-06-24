@@ -154,7 +154,7 @@ function wireOrderButtons(box) {
 
 // Étape 1 : dry-run (aucune commande créée) → on affiche ce qui sera envoyé.
 async function startOrder(btn) {
-  const { m: marque, r: reference, q: quantite } = btn.dataset;
+  const { m: marque, r: reference, q: quantite, d: designation } = btn.dataset;
   const zone = btn.closest(".result-card").querySelector(".rc-order");
   btn.disabled = true;
   zone.innerHTML = `<div class="loading">Préparation…</div>`;
@@ -177,7 +177,7 @@ async function startOrder(btn) {
       btn.disabled = false;
     });
     zone.querySelector(".oc-go").addEventListener("click", () =>
-      confirmOrder(zone, { marque, reference, quantite })
+      confirmOrder(zone, { marque, reference, quantite, designation })
     );
   } catch (e) {
     zone.innerHTML = `<div class="error">${e.message}</div>`;
@@ -190,6 +190,18 @@ async function confirmOrder(zone, article) {
   zone.innerHTML = `<div class="loading">Envoi de la commande…</div>`;
   try {
     const r = await commande({ articles: [article], confirm: true });
+    // Historique local : on enregistre chaque ligne réellement intégrée.
+    (r.lignes || []).forEach((l) => {
+      if (l.ok)
+        recordOrder({
+          marque: l.marque || article.marque,
+          reference: l.reference || article.reference,
+          designation: article.designation,
+          quantite: article.quantite,
+          numCDE: r.numCDE || "",
+        });
+    });
+    renderHistory();
     const lignes = (r.lignes || [])
       .map(
         (l) =>
@@ -243,7 +255,7 @@ function dispoCard(it, quantite = 1) {
   // Bouton commande seulement si la pièce peut être commandée (dispo ou rupture autorisée).
   const orderable = lvl === "ok" || lvl === "warn";
   const orderBtn = orderable
-    ? `<button class="btn-order" data-m="${esc(it.marque)}" data-r="${esc(it.reference)}" data-q="${esc(quantite)}">Commander ${esc(quantite)}</button>`
+    ? `<button class="btn-order" data-m="${esc(it.marque)}" data-r="${esc(it.reference)}" data-q="${esc(quantite)}" data-d="${esc(it.designation || "")}">Commander ${esc(quantite)}</button>`
     : "";
 
   return `<div class="result-card ${lvl}">
@@ -262,11 +274,118 @@ function dispoCard(it, quantite = 1) {
   </div>`;
 }
 
+/* ---------- Historique des commandes (localStorage) ---------- */
+// Pas de base de données côté serveur (fonction serverless sans état) : on conserve
+// l'historique des commandes confirmées dans le navigateur.
+const HISTORY_KEY = "pg_orders";
+
+function loadOrders() {
+  try {
+    const v = JSON.parse(localStorage.getItem(HISTORY_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordOrder(o) {
+  const list = loadOrders();
+  list.push({
+    ts: Date.now(),
+    reference: o.reference || "",
+    designation: o.designation || "",
+    marque: o.marque || "",
+    quantite: Number(o.quantite) || 1,
+    numCDE: o.numCDE || "",
+  });
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+  } catch {
+    /* quota plein : on ignore silencieusement */
+  }
+}
+
+// Début (minuit) du jour / de la semaine (lundi) / du mois en cours.
+function periodStart(period) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (period === "week") {
+    const day = (d.getDay() + 6) % 7; // lundi = 0 … dimanche = 6
+    d.setDate(d.getDate() - day);
+  } else if (period === "month") {
+    d.setDate(1);
+  }
+  return d.getTime();
+}
+
+let histPeriod = "day";
+
+function renderHistory() {
+  const box = $("#history-list");
+  if (!box) return;
+  const start = periodStart(histPeriod);
+  const rows = loadOrders()
+    .filter((o) => o.ts >= start)
+    .sort((a, b) => b.ts - a.ts);
+
+  const countEl = $("#history-count");
+  if (countEl)
+    countEl.textContent = rows.length
+      ? `${rows.length} ligne${rows.length > 1 ? "s" : ""}`
+      : "";
+
+  if (!rows.length) {
+    box.innerHTML = `<div class="empty">Aucune commande sur cette période.</div>`;
+    return;
+  }
+
+  const showDate = histPeriod !== "day";
+  const head = `
+    <div class="hist-row hist-head">
+      <span class="hc-when">${showDate ? "Date · heure" : "Heure"}</span>
+      <span class="hc-ref">Référence</span>
+      <span class="hc-dgn">Désignation</span>
+      <span class="hc-qty">Qté</span>
+    </div>`;
+
+  const body = rows
+    .map((o) => {
+      const dt = new Date(o.ts);
+      const time = dt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const when = showDate
+        ? `${dt.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} · ${time}`
+        : time;
+      const ref = [o.marque, o.reference].filter(Boolean).join(" ");
+      return `
+        <div class="hist-row">
+          <span class="hc-when">${esc(when)}</span>
+          <span class="hc-ref">${esc(ref)}</span>
+          <span class="hc-dgn">${esc(o.designation || "—")}</span>
+          <span class="hc-qty">${esc(o.quantite)}</span>
+        </div>`;
+    })
+    .join("");
+
+  box.innerHTML = head + body;
+}
+
 /* ---------- Init ---------- */
 if (TOKEN) {
   const logoutBtn = $("#logout");
   if (logoutBtn) logoutBtn.addEventListener("click", logout);
   const brandLogo = $(".brand-logo");
   if (brandLogo) brandLogo.addEventListener("click", () => location.reload());
+
+  // Boutons de période de l'historique (jour / semaine / mois).
+  $$(".hist-tab").forEach((b) =>
+    b.addEventListener("click", () => {
+      $$(".hist-tab").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      histPeriod = b.dataset.period;
+      renderHistory();
+    })
+  );
+  renderHistory();
+
   checkStatus();
 }
