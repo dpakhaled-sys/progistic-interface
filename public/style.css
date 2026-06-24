@@ -44,7 +44,7 @@ body {
   background: linear-gradient(180deg, var(--bg-2), transparent);
 }
 .brand { display: flex; align-items: center; gap: 14px; }
-.brand-logo { height: 48px; width: auto; display: block; }
+.brand-logo { height: 48px; width: auto; display: block; cursor: pointer; }
 
 .status {
   display: flex; align-items: center; gap: 9px;

@@ -266,5 +266,7 @@ function dispoCard(it, quantite = 1) {
 if (TOKEN) {
   const logoutBtn = $("#logout");
   if (logoutBtn) logoutBtn.addEventListener("click", logout);
+  const brandLogo = $(".brand-logo");
+  if (brandLogo) brandLogo.addEventListener("click", () => location.reload());
   checkStatus();
 }
