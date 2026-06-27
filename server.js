@@ -3,6 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import path from "node:path";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { XMLParser } from "fast-xml-parser";
 
@@ -30,6 +31,72 @@ const CFG = {
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ---------------------------------------------------------------------------
+// Historique des commandes — PARTAGÉ entre tous les postes.
+// ---------------------------------------------------------------------------
+// • Upstash Redis (UPSTASH_REDIS_REST_URL défini) : stockage Redis externe,
+//   partagé entre toutes les instances Vercel serverless — solution recommandée.
+// • Fichier JSON (fallback) : parfait pour un hébergement always-on (un seul
+//   processus Node.js) ; non partagé sur Vercel (chaque instance a son /tmp).
+const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const ORDERS_KEY    = "pg_orders";
+
+const ORDERS_FILE =
+  process.env.ORDERS_FILE ||
+  (process.env.VERCEL
+    ? "/tmp/pg_orders.json"
+    : path.join(__dirname, "data", "orders.json"));
+const ORDERS_MAX = 5000;
+
+async function readOrders() {
+  if (UPSTASH_URL && UPSTASH_TOKEN) {
+    try {
+      const res  = await fetch(`${UPSTASH_URL}/get/${ORDERS_KEY}`, {
+        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      });
+      const json = await res.json();
+      if (!json.result) return [];
+      const parsed = JSON.parse(json.result);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  // Fallback fichier (local / always-on)
+  try {
+    const v = JSON.parse(fs.readFileSync(ORDERS_FILE, "utf8"));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeOrders(list) {
+  if (UPSTASH_URL && UPSTASH_TOKEN) {
+    try {
+      await fetch(`${UPSTASH_URL}/set/${ORDERS_KEY}`, {
+        method:  "POST",
+        headers: {
+          Authorization:  `Bearer ${UPSTASH_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ value: JSON.stringify(list) }),
+      });
+    } catch (e) {
+      console.warn("Historique Redis non persisté :", e.message);
+    }
+    return;
+  }
+  // Fallback fichier
+  try {
+    fs.mkdirSync(path.dirname(ORDERS_FILE), { recursive: true });
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(list));
+  } catch (e) {
+    console.warn("Historique non persisté :", e.message);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Outils XML
@@ -384,16 +451,45 @@ function parseCommande(raw) {
 }
 
 // ---------------------------------------------------------------------------
+// Validation des articles (dispo + commande)
+// ---------------------------------------------------------------------------
+const MAX_ARTICLES = 50;
+
+function validateArticles(articles) {
+  if (!Array.isArray(articles) || articles.length === 0)
+    return "Liste 'articles' vide";
+  if (articles.length > MAX_ARTICLES)
+    return `Maximum ${MAX_ARTICLES} articles par requête`;
+  for (const a of articles) {
+    if (!a || typeof a.marque !== "string" || typeof a.reference !== "string")
+      return "Format d'article invalide (marque et reference requis, type string)";
+    if (a.marque.length > 50 || a.reference.length > 100)
+      return "Champs article trop longs (marque ≤ 50, reference ≤ 100)";
+    const q = Number(a.quantite ?? 1);
+    if (!Number.isInteger(q) || q < 1 || q > 9999)
+      return "Quantité invalide (entier entre 1 et 9999)";
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // API REST
 // ---------------------------------------------------------------------------
 const app = express();
-app.set("trust proxy", true); // derrière le proxy Vercel : req.ip = vraie IP cliente
+// Sur Vercel (1 saut de proxy), on récupère la vraie IP cliente.
+// En local (aucun proxy), on désactive pour empêcher le spoofing de X-Forwarded-For
+// qui permettrait de contourner le rate-limiter du login.
+app.set("trust proxy", process.env.VERCEL ? 1 : false);
 
 // En-têtes de sécurité (limitent l'impact d'un éventuel XSS / clickjacking).
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
   res.setHeader(
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; " +
@@ -403,10 +499,11 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-const wantsDebug = (req) => req.query.debug === "1";
+// debug=1 uniquement en dehors de Vercel (ne pas exposer le XML brut en prod)
+const wantsDebug = (req) => !process.env.VERCEL && req.query.debug === "1";
 
 // ---------------------------------------------------------------------------
 // Authentification — protège la page ET l'API (l'API peut créer des commandes,
@@ -452,7 +549,16 @@ function verifyToken(token) {
 // (chaque instance a son compteur -> pour un blocage partagé, utiliser Vercel KV / Upstash).
 const LOGIN_MAX_FAILS = 5;
 const LOGIN_BLOCK_MS = 15 * 60 * 1000;
-const loginAttempts = new Map(); // ip -> { fails, blockedUntil }
+const loginAttempts = new Map(); // ip -> { fails, blockedUntil, _ts }
+
+// Nettoyage périodique pour éviter une fuite mémoire sur de grands volumes d'IPs.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of loginAttempts) {
+    const expiry = rec.blockedUntil ?? (rec._ts ?? 0) + LOGIN_BLOCK_MS;
+    if (now > expiry) loginAttempts.delete(ip);
+  }
+}, 30 * 60 * 1000).unref(); // .unref() : n'empêche pas Node de quitter
 
 app.post("/api/login", (req, res) => {
   const ip = req.ip || "?";
@@ -485,13 +591,13 @@ app.post("/api/login", (req, res) => {
   // 5e échec : on arme le blocage (les tentatives suivantes seront refusées 15 min),
   // mais cette tentative-ci renvoie encore l'erreur de mot de passe.
   if (left <= 0) {
-    loginAttempts.set(ip, { fails, blockedUntil: now + LOGIN_BLOCK_MS });
+    loginAttempts.set(ip, { fails, blockedUntil: now + LOGIN_BLOCK_MS, _ts: now });
     return res.status(401).json({
       ok: false,
       error: "Identifiant ou mot de passe incorrect. Connexion bloquée 15 min.",
     });
   }
-  loginAttempts.set(ip, { fails });
+  loginAttempts.set(ip, { fails, _ts: now });
   res.status(401).json({
     ok: false,
     error: `Identifiant ou mot de passe incorrect (${left} tentative${left > 1 ? "s" : ""} restante${left > 1 ? "s" : ""}).`,
@@ -516,6 +622,29 @@ app.get("/api/config", (_req, res) => {
     protocol: CFG.protocol,
     idClient: CFG.idClient,
   });
+});
+
+// Historique partagé : lecture (tous les postes voient la même liste).
+app.get("/api/historique", async (_req, res) => {
+  res.json({ orders: await readOrders() });
+});
+
+// Historique partagé : ajout d'une ligne commandée.
+app.post("/api/historique", async (req, res) => {
+  const b = req.body || {};
+  const entry = {
+    ts: Date.now(),
+    reference: String(b.reference ?? "").slice(0, 80),
+    designation: String(b.designation ?? "").slice(0, 200),
+    marque: String(b.marque ?? "").slice(0, 80),
+    quantite: Number(b.quantite) || 1,
+    numCDE: String(b.numCDE ?? "").slice(0, 80),
+  };
+  const list = await readOrders();
+  list.push(entry);
+  if (list.length > ORDERS_MAX) list.splice(0, list.length - ORDERS_MAX);
+  await writeOrders(list);
+  res.json({ ok: true });
 });
 
 app.get("/api/acces", async (req, res) => {
@@ -569,8 +698,8 @@ app.get("/api/references", async (req, res) => {
 app.post("/api/dispo", async (req, res) => {
   try {
     const articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
-    if (!articles.length)
-      return res.status(400).json({ error: "Liste 'articles' vide" });
+    const err = validateArticles(articles);
+    if (err) return res.status(400).json({ error: err });
     const xml = xmlDispo(articles);
     const raw = await send("DISPO", xml, () => mockDispo(articles));
     res.json({ ...parseDispo(raw), ...(wantsDebug(req) ? { raw, request: xml } : {}) });
@@ -584,8 +713,8 @@ app.post("/api/dispo", async (req, res) => {
 app.post("/api/commande", async (req, res) => {
   try {
     const articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
-    if (!articles.length)
-      return res.status(400).json({ error: "Liste 'articles' vide" });
+    const err = validateArticles(articles);
+    if (err) return res.status(400).json({ error: err });
     const xml = xmlCommande(articles);
     if (req.body?.confirm !== true) {
       return res.json({
