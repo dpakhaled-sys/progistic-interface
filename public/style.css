@@ -324,6 +324,67 @@ main { padding: 28px; max-width: 1120px; margin: 0 auto; }
 }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ---------- Panier ---------- */
+.cart-card {
+  margin-top: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.cart-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.cart-head h2 {
+  font-family: var(--display); font-size: 14px; font-weight: 700; margin: 0;
+  letter-spacing: .03em; display: flex; align-items: center; gap: 10px;
+}
+.cart-clear { font-size: 12px; }
+.cart-clear:hover { border-color: var(--ko); color: var(--ko); }
+
+.cart-lines { padding: 6px; }
+.cart-line {
+  display: grid;
+  grid-template-columns: 1fr 2fr 88px 38px;
+  gap: 12px; align-items: center;
+  padding: 11px 14px; border-radius: 9px;
+}
+.cart-line:nth-child(even) { background: var(--bg-2); }
+.cl-id { display: flex; flex-direction: column; gap: 2px; }
+.cl-marque { color: var(--accent-soft); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; }
+.cl-ref { font-family: var(--mono); font-weight: 600; font-size: 14px; }
+.cl-dgn { color: var(--ink-dim); font-size: 13px; }
+.cl-qty {
+  background: var(--bg); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 14px;
+  width: 100%; outline: none; transition: border-color .15s;
+}
+.cl-qty:focus { border-color: var(--accent); }
+.cl-remove {
+  background: none; border: 1px solid var(--line); color: var(--ink-faint);
+  border-radius: 8px; padding: 7px 0; cursor: pointer; font-size: 13px;
+  transition: all .15s;
+}
+.cl-remove:hover { border-color: var(--ko); color: var(--ko); }
+
+.cart-foot {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px 18px; border-top: 1px solid var(--line);
+}
+.cart-foot .cart-validate { align-self: flex-end; }
+#cart-msg:empty { display: none; }
+.oc-recap { list-style: none; margin: 4px 0 10px; padding: 0; font-size: 13.5px; color: var(--ink); }
+.oc-recap li { padding: 2px 0; font-family: var(--mono); }
+.od-note { margin: 8px 0 0; font-size: 12.5px; color: var(--warn); }
+
+@media (max-width: 720px) {
+  .cart-line { grid-template-columns: 1fr 70px 36px; }
+  .cl-dgn { display: none; }
+}
+
 /* ---------- Historique des commandes ---------- */
 .history-card {
   margin-top: 26px;

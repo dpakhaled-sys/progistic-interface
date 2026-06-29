@@ -148,78 +148,19 @@ async function commande(payload) {
 
 function wireOrderButtons(box) {
   box.querySelectorAll(".btn-order").forEach((b) =>
-    b.addEventListener("click", () => startOrder(b))
+    b.addEventListener("click", () => {
+      const { m: marque, r: reference, q: quantite, d: designation } = b.dataset;
+      addToCart({ marque, reference, quantite, designation });
+      // Retour visuel bref sur le bouton.
+      const prev = b.textContent;
+      b.textContent = "✓ Ajouté au panier";
+      b.disabled = true;
+      setTimeout(() => {
+        b.textContent = prev;
+        b.disabled = false;
+      }, 1200);
+    })
   );
-}
-
-// Étape 1 : dry-run (aucune commande créée) → on affiche ce qui sera envoyé.
-async function startOrder(btn) {
-  const { m: marque, r: reference, q: quantite, d: designation } = btn.dataset;
-  const zone = btn.closest(".result-card").querySelector(".rc-order");
-  btn.disabled = true;
-  zone.innerHTML = `<div class="loading">Préparation…</div>`;
-  try {
-    const dry = await commande({ articles: [{ marque, reference, quantite }] });
-    const warn = dry.willCreateOrder
-      ? `<b>⚠ Ceci crée une VRAIE commande</b> dans l'ERP Progistique.`
-      : `Mode démo : aucune commande réelle ne sera créée.`;
-    zone.innerHTML = `
-      <div class="order-confirm">
-        <p>${warn}</p>
-        <p class="oc-line">Commander <b>${esc(quantite)} × ${esc(marque)} ${esc(reference)}</b> ?</p>
-        <div class="oc-actions">
-          <button class="btn-primary oc-go">Confirmer la commande</button>
-          <button class="btn-ghost oc-cancel">Annuler</button>
-        </div>
-      </div>`;
-    zone.querySelector(".oc-cancel").addEventListener("click", () => {
-      zone.innerHTML = "";
-      btn.disabled = false;
-    });
-    zone.querySelector(".oc-go").addEventListener("click", () =>
-      confirmOrder(zone, { marque, reference, quantite, designation })
-    );
-  } catch (e) {
-    zone.innerHTML = `<div class="error">${e.message}</div>`;
-    btn.disabled = false;
-  }
-}
-
-// Étape 2 : envoi confirmé (confirm:true) → vraie commande.
-async function confirmOrder(zone, article) {
-  zone.innerHTML = `<div class="loading">Envoi de la commande…</div>`;
-  try {
-    const r = await commande({ articles: [article], confirm: true });
-    // Historique partagé : on enregistre chaque ligne réellement intégrée.
-    for (const l of r.lignes || []) {
-      if (l.ok)
-        await recordOrder({
-          marque: l.marque || article.marque,
-          reference: l.reference || article.reference,
-          designation: article.designation,
-          quantite: article.quantite,
-          numCDE: r.numCDE || "",
-        });
-    }
-    await refreshHistory();
-    const lignes = (r.lignes || [])
-      .map(
-        (l) =>
-          `<li class="${l.ok ? "ok" : "ko"}">${esc(l.marque)} ${esc(l.reference)} — ${esc(
-            l.text || (l.ok ? "Ligne intégrée" : "Ligne ignorée")
-          )}</li>`
-      )
-      .join("");
-    zone.innerHTML = `
-      <div class="order-done ${r.ok ? "ok" : "ko"}">
-        <div class="od-head">${
-          r.numCDE ? `Commande créée · <b>${esc(r.numCDE)}</b>` : `Réponse : ${esc(r.text || r.code)}`
-        }</div>
-        <ul class="od-lines">${lignes}</ul>
-      </div>`;
-  } catch (e) {
-    zone.innerHTML = `<div class="error">${e.message}</div>`;
-  }
 }
 
 function dispoCard(it, quantite = 1) {
@@ -252,10 +193,10 @@ function dispoCard(it, quantite = 1) {
         <div class="price"><label>Vente net TTC</label><span class="v hl">${esc(fmt(it.prixVenteNetTTC))}</span></div>
         <div class="price"><label>Remise</label><span class="v">${it.remise ? esc(it.remise) + " %" : "—"}</span></div>
       </div>` : "";
-  // Bouton commande seulement si la pièce peut être commandée (dispo ou rupture autorisée).
+  // Bouton « ajouter au panier » seulement si la pièce peut être commandée (dispo ou rupture autorisée).
   const orderable = lvl === "ok" || lvl === "warn";
   const orderBtn = orderable
-    ? `<button class="btn-order" data-m="${esc(it.marque)}" data-r="${esc(it.reference)}" data-q="${esc(quantite)}" data-d="${esc(it.designation || "")}">Commander ${esc(quantite)}</button>`
+    ? `<button class="btn-order" data-m="${esc(it.marque)}" data-r="${esc(it.reference)}" data-q="${esc(quantite)}" data-d="${esc(it.designation || "")}">+ Ajouter au panier</button>`
     : "";
 
   return `<div class="result-card ${lvl}">
@@ -272,6 +213,201 @@ function dispoCard(it, quantite = 1) {
     <div class="rc-actions">${orderBtn}</div>
     <div class="rc-order"></div>
   </div>`;
+}
+
+/* ---------- Panier (validation groupée de plusieurs références) ---------- */
+// Le panier vit dans le navigateur (localStorage) ; il survit aux rechargements.
+// La validation envoie TOUTES les lignes en une seule commande (/api/commande).
+const CART_KEY = "pg_cart";
+let cart = loadCart();
+
+function loadCart() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CART_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCart() {
+  try {
+    localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  } catch {
+    /* quota plein : on ignore */
+  }
+}
+
+// Ajoute une ligne ; si la même marque+référence existe déjà, on cumule la qté.
+function addToCart({ marque, reference, quantite, designation }) {
+  const qty = Math.max(1, Number(quantite) || 1);
+  const key = (s) => String(s || "").trim().toLowerCase();
+  const existing = cart.find(
+    (l) => key(l.marque) === key(marque) && key(l.reference) === key(reference)
+  );
+  if (existing) existing.quantite = (Number(existing.quantite) || 0) + qty;
+  else cart.push({ marque, reference, quantite: qty, designation: designation || "" });
+  saveCart();
+  renderCart();
+}
+
+function renderCart() {
+  const box = $("#cart");
+  if (!box) return;
+  if (!cart.length) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+
+  const lines = cart
+    .map(
+      (l, i) => `
+      <div class="cart-line">
+        <div class="cl-id">
+          <span class="cl-marque">${esc(l.marque || "—")}</span>
+          <span class="cl-ref">${esc(l.reference)}</span>
+        </div>
+        <div class="cl-dgn">${esc(l.designation || "—")}</div>
+        <input class="cl-qty" type="number" min="1" value="${esc(l.quantite)}" data-i="${i}" aria-label="Quantité" />
+        <button class="cl-remove" data-i="${i}" title="Retirer la ligne" aria-label="Retirer">✕</button>
+      </div>`
+    )
+    .join("");
+
+  box.innerHTML = `
+    <div class="cart-head">
+      <h2>Panier <span class="badge">${cart.length} réf.</span></h2>
+      <button class="btn-ghost cart-clear">Vider</button>
+    </div>
+    <div class="cart-lines">${lines}</div>
+    <div class="cart-foot">
+      <div id="cart-msg"></div>
+      <button class="btn-primary cart-validate">Valider le panier (${cart.length})</button>
+    </div>`;
+
+  // Câblage (CSP : aucun handler inline).
+  box.querySelectorAll(".cl-qty").forEach((inp) =>
+    inp.addEventListener("change", () => {
+      const i = Number(inp.dataset.i);
+      const q = Math.max(1, Math.floor(Number(inp.value) || 1));
+      cart[i].quantite = q;
+      inp.value = q;
+      saveCart();
+    })
+  );
+  box.querySelectorAll(".cl-remove").forEach((b) =>
+    b.addEventListener("click", () => {
+      cart.splice(Number(b.dataset.i), 1);
+      saveCart();
+      renderCart();
+    })
+  );
+  box.querySelector(".cart-clear").addEventListener("click", () => {
+    cart = [];
+    saveCart();
+    renderCart();
+  });
+  box.querySelector(".cart-validate").addEventListener("click", validateCart);
+}
+
+// Étape 1 : dry-run (aucune commande créée) → on affiche un récapitulatif.
+async function validateCart() {
+  if (!cart.length) return;
+  const msg = $("#cart-msg");
+  const btn = $(".cart-validate");
+  btn.disabled = true;
+  msg.innerHTML = `<div class="loading">Préparation…</div>`;
+  try {
+    const dry = await commande({ articles: cart });
+    const warn = dry.willCreateOrder
+      ? `<b>⚠ Ceci crée une VRAIE commande</b> dans l'ERP Progistique (${cart.length} ligne${cart.length > 1 ? "s" : ""}).`
+      : `Mode démo : aucune commande réelle ne sera créée.`;
+    const recap = cart
+      .map((l) => `<li>${esc(l.quantite)} × ${esc(l.marque)} ${esc(l.reference)}</li>`)
+      .join("");
+    msg.innerHTML = `
+      <div class="order-confirm">
+        <p>${warn}</p>
+        <ul class="oc-recap">${recap}</ul>
+        <div class="oc-actions">
+          <button class="btn-primary oc-go">Confirmer la commande</button>
+          <button class="btn-ghost oc-cancel">Annuler</button>
+        </div>
+      </div>`;
+    msg.querySelector(".oc-cancel").addEventListener("click", () => {
+      msg.innerHTML = "";
+      btn.disabled = false;
+    });
+    msg.querySelector(".oc-go").addEventListener("click", () => submitCart(msg));
+  } catch (e) {
+    msg.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
+}
+
+// Étape 2 : envoi confirmé → vraie commande pour toutes les lignes du panier.
+async function submitCart(msg) {
+  msg.innerHTML = `<div class="loading">Envoi de la commande…</div>`;
+  // On garde une copie : les lignes acceptées sortent du panier, les refusées y restent.
+  const sent = cart.slice();
+  try {
+    const r = await commande({ articles: sent, confirm: true });
+    const lignes = r.lignes || [];
+    const okKey = new Set();
+    for (const l of lignes) {
+      if (!l.ok) continue;
+      okKey.add(`${String(l.marque).toLowerCase()}|${String(l.reference).toLowerCase()}`);
+      const src = sent.find(
+        (s) =>
+          String(s.marque).toLowerCase() === String(l.marque).toLowerCase() &&
+          String(s.reference).toLowerCase() === String(l.reference).toLowerCase()
+      );
+      await recordOrder({
+        marque: l.marque || (src && src.marque),
+        reference: l.reference || (src && src.reference),
+        designation: src && src.designation,
+        quantite: src && src.quantite,
+        numCDE: r.numCDE || "",
+      });
+    }
+    await refreshHistory();
+
+    // Les lignes intégrées quittent le panier ; les refusées restent pour réessai.
+    cart = sent.filter(
+      (s) => !okKey.has(`${String(s.marque).toLowerCase()}|${String(s.reference).toLowerCase()}`)
+    );
+    saveCart();
+
+    const recap = lignes
+      .map(
+        (l) =>
+          `<li class="${l.ok ? "ok" : "ko"}">${esc(l.marque)} ${esc(l.reference)} — ${esc(
+            l.text || (l.ok ? "Ligne intégrée" : "Ligne ignorée")
+          )}</li>`
+      )
+      .join("");
+    const done = `
+      <div class="order-done ${r.ok ? "ok" : "ko"}">
+        <div class="od-head">${
+          r.numCDE ? `Commande créée · <b>${esc(r.numCDE)}</b>` : `Réponse : ${esc(r.text || r.code)}`
+        }</div>
+        <ul class="od-lines">${recap}</ul>
+        ${cart.length ? `<p class="od-note">${cart.length} ligne(s) refusée(s) conservée(s) dans le panier.</p>` : ""}
+      </div>`;
+    renderCart(); // reconstruit le panier (vide ou avec les lignes refusées)
+    // On réinjecte le compte-rendu : si le panier est vide, il est masqué → on l'affiche au-dessus.
+    if (!cart.length) {
+      const box = $("#cart");
+      box.hidden = false;
+      box.innerHTML = done;
+    } else {
+      $("#cart-msg").innerHTML = done;
+    }
+  } catch (e) {
+    msg.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
 }
 
 /* ---------- Historique des commandes (partagé, côté serveur) ---------- */
@@ -393,6 +529,7 @@ if (TOKEN) {
       renderHistory();
     })
   );
+  renderCart(); // restaure le panier éventuellement persisté
   refreshHistory();
   // Rafraîchissement régulier : chaque poste voit les commandes des autres
   // sans avoir à recharger la page.
