@@ -620,7 +620,30 @@ app.use("/api", (req, res, next) => {
   res.status(401).json({ error: "Non authentifié" });
 });
 
-app.get("/api/config", (_req, res) => {
+app.get("/api/config", async (_req, res) => {
+  // Diagnostic historique : on vérifie si les variables Upstash sont vues au
+  // runtime, puis on tente un vrai appel Redis (lecture de la clé partagée).
+  const upstashUrlSet = !!UPSTASH_URL;
+  const upstashTokenSet = !!UPSTASH_TOKEN;
+  let redisPing = "n/a";
+  let redisCount = null;
+  if (upstashUrlSet && upstashTokenSet) {
+    try {
+      const r = await fetch(`${UPSTASH_URL}/get/${ORDERS_KEY}`, {
+        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) {
+        redisPing = `erreur ${r.status} ${j.error || ""}`.trim();
+      } else {
+        redisPing = "ok";
+        const parsed = j.result ? JSON.parse(j.result) : [];
+        redisCount = Array.isArray(parsed) ? parsed.length : "valeur non-tableau";
+      }
+    } catch (e) {
+      redisPing = `exception ${e.message}`;
+    }
+  }
   res.json({
     mock: CFG.mock,
     host: CFG.host,
@@ -629,7 +652,11 @@ app.get("/api/config", (_req, res) => {
     idClient: CFG.idClient,
     // Backend de l'historique : "redis" = partagé entre tous les postes,
     // "fichier" = local à l'instance (sur Vercel, chacun voit alors sa propre liste).
-    historiqueStore: UPSTASH_URL && UPSTASH_TOKEN ? "redis" : "fichier",
+    historiqueStore: upstashUrlSet && upstashTokenSet ? "redis" : "fichier",
+    upstashUrlSet,
+    upstashTokenSet,
+    redisPing,   // "ok" = connexion Redis réussie ; sinon le détail de l'erreur
+    redisCount,  // nb de commandes actuellement stockées dans Redis
   });
 });
 
