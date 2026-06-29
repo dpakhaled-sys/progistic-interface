@@ -461,9 +461,13 @@ function validateArticles(articles) {
   if (articles.length > MAX_ARTICLES)
     return `Maximum ${MAX_ARTICLES} articles par requête`;
   for (const a of articles) {
-    if (!a || typeof a.marque !== "string" || typeof a.reference !== "string")
-      return "Format d'article invalide (marque et reference requis, type string)";
-    if (a.marque.length > 50 || a.reference.length > 100)
+    // La référence est obligatoire. La marque est facultative : on interroge
+    // souvent la dispo par référence seule, le service résout alors la/les marque(s).
+    if (!a || typeof a.reference !== "string" || !a.reference.trim())
+      return "Format d'article invalide (reference requise, type string)";
+    if (a.marque != null && typeof a.marque !== "string")
+      return "Format d'article invalide (marque doit être une chaîne)";
+    if ((a.marque?.length || 0) > 50 || a.reference.length > 100)
       return "Champs article trop longs (marque ≤ 50, reference ≤ 100)";
     const q = Number(a.quantite ?? 1);
     if (!Number.isInteger(q) || q < 1 || q > 9999)
