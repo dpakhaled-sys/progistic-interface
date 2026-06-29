@@ -76,14 +76,16 @@ async function readOrders() {
 async function writeOrders(list) {
   if (UPSTASH_URL && UPSTASH_TOKEN) {
     try {
-      await fetch(`${UPSTASH_URL}/set/${ORDERS_KEY}`, {
+      // API REST Upstash : POST /set/<clé> avec la valeur BRUTE dans le corps
+      // (pas d'enveloppe { value: ... }, sinon Redis stocke l'objet littéral).
+      const res = await fetch(`${UPSTASH_URL}/set/${ORDERS_KEY}`, {
         method:  "POST",
-        headers: {
-          Authorization:  `Bearer ${UPSTASH_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ value: JSON.stringify(list) }),
+        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+        body: JSON.stringify(list),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error)
+        console.warn("Historique Redis non persisté :", json.error || res.status);
     } catch (e) {
       console.warn("Historique Redis non persisté :", e.message);
     }
