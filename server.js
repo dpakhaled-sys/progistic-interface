@@ -615,43 +615,12 @@ app.post("/api/logout", (_req, res) => res.json({ ok: true }));
 
 // Toutes les autres routes /api/* exigent un jeton valide.
 app.use("/api", (req, res, next) => {
-  // /config ne renvoie aucun secret (diagnostic + état de la connexion Redis) :
-  // on l'autorise sans jeton pour pouvoir le consulter directement au navigateur.
-  if (
-    req.path === "/login" ||
-    req.path === "/logout" ||
-    req.path === "/config" ||
-    req.path === "/redis-test"
-  )
-    return next();
+  if (req.path === "/login" || req.path === "/logout") return next();
   if (verifyToken(bearer(req))) return next();
   res.status(401).json({ error: "Non authentifié" });
 });
 
-app.get("/api/config", async (_req, res) => {
-  // Diagnostic historique : on vérifie si les variables Upstash sont vues au
-  // runtime, puis on tente un vrai appel Redis (lecture de la clé partagée).
-  const upstashUrlSet = !!UPSTASH_URL;
-  const upstashTokenSet = !!UPSTASH_TOKEN;
-  let redisPing = "n/a";
-  let redisCount = null;
-  if (upstashUrlSet && upstashTokenSet) {
-    try {
-      const r = await fetch(`${UPSTASH_URL}/get/${ORDERS_KEY}`, {
-        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) {
-        redisPing = `erreur ${r.status} ${j.error || ""}`.trim();
-      } else {
-        redisPing = "ok";
-        const parsed = j.result ? JSON.parse(j.result) : [];
-        redisCount = Array.isArray(parsed) ? parsed.length : "valeur non-tableau";
-      }
-    } catch (e) {
-      redisPing = `exception ${e.message}`;
-    }
-  }
+app.get("/api/config", (_req, res) => {
   res.json({
     mock: CFG.mock,
     host: CFG.host,
@@ -660,45 +629,8 @@ app.get("/api/config", async (_req, res) => {
     idClient: CFG.idClient,
     // Backend de l'historique : "redis" = partagé entre tous les postes,
     // "fichier" = local à l'instance (sur Vercel, chacun voit alors sa propre liste).
-    historiqueStore: upstashUrlSet && upstashTokenSet ? "redis" : "fichier",
-    upstashUrlSet,
-    upstashTokenSet,
-    redisPing,   // "ok" = connexion Redis réussie ; sinon le détail de l'erreur
-    redisCount,  // nb de commandes actuellement stockées dans Redis
+    historiqueStore: UPSTASH_URL && UPSTASH_TOKEN ? "redis" : "fichier",
   });
-});
-
-// Diagnostic écriture Redis : tente un vrai SET puis relit la valeur, et renvoie
-// le résultat brut d'Upstash. Sert à détecter un token en lecture seule (le SET
-// échoue alors que le GET passe). Ne renvoie aucun secret.
-app.get("/api/redis-test", async (_req, res) => {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN)
-    return res.json({ ok: false, reason: "Variables Upstash absentes" });
-  const key = "pg_test";
-  const value = `test-${Date.now()}`;
-  const out = {};
-  try {
-    const w = await fetch(`${UPSTASH_URL}/set/${key}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
-      body: value,
-    });
-    out.setStatus = w.status;
-    out.setResult = await w.json().catch(() => ({}));
-  } catch (e) {
-    out.setException = e.message;
-  }
-  try {
-    const r = await fetch(`${UPSTASH_URL}/get/${key}`, {
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
-    });
-    out.getResult = await r.json().catch(() => ({}));
-  } catch (e) {
-    out.getException = e.message;
-  }
-  // Verdict : l'écriture a-t-elle pris ? (valeur relue == valeur écrite)
-  out.writeWorks = out.getResult && out.getResult.result === value;
-  res.json(out);
 });
 
 // Historique partagé : lecture (tous les postes voient la même liste).
