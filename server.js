@@ -615,7 +615,10 @@ app.post("/api/logout", (_req, res) => res.json({ ok: true }));
 
 // Toutes les autres routes /api/* exigent un jeton valide.
 app.use("/api", (req, res, next) => {
-  if (req.path === "/login" || req.path === "/logout") return next();
+  // /config ne renvoie aucun secret (diagnostic + état de la connexion Redis) :
+  // on l'autorise sans jeton pour pouvoir le consulter directement au navigateur.
+  if (req.path === "/login" || req.path === "/logout" || req.path === "/config")
+    return next();
   if (verifyToken(bearer(req))) return next();
   res.status(401).json({ error: "Non authentifié" });
 });
