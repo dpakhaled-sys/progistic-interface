@@ -617,7 +617,12 @@ app.post("/api/logout", (_req, res) => res.json({ ok: true }));
 app.use("/api", (req, res, next) => {
   // /config ne renvoie aucun secret (diagnostic + état de la connexion Redis) :
   // on l'autorise sans jeton pour pouvoir le consulter directement au navigateur.
-  if (req.path === "/login" || req.path === "/logout" || req.path === "/config")
+  if (
+    req.path === "/login" ||
+    req.path === "/logout" ||
+    req.path === "/config" ||
+    req.path === "/redis-test"
+  )
     return next();
   if (verifyToken(bearer(req))) return next();
   res.status(401).json({ error: "Non authentifié" });
@@ -661,6 +666,39 @@ app.get("/api/config", async (_req, res) => {
     redisPing,   // "ok" = connexion Redis réussie ; sinon le détail de l'erreur
     redisCount,  // nb de commandes actuellement stockées dans Redis
   });
+});
+
+// Diagnostic écriture Redis : tente un vrai SET puis relit la valeur, et renvoie
+// le résultat brut d'Upstash. Sert à détecter un token en lecture seule (le SET
+// échoue alors que le GET passe). Ne renvoie aucun secret.
+app.get("/api/redis-test", async (_req, res) => {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN)
+    return res.json({ ok: false, reason: "Variables Upstash absentes" });
+  const key = "pg_test";
+  const value = `test-${Date.now()}`;
+  const out = {};
+  try {
+    const w = await fetch(`${UPSTASH_URL}/set/${key}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      body: value,
+    });
+    out.setStatus = w.status;
+    out.setResult = await w.json().catch(() => ({}));
+  } catch (e) {
+    out.setException = e.message;
+  }
+  try {
+    const r = await fetch(`${UPSTASH_URL}/get/${key}`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    });
+    out.getResult = await r.json().catch(() => ({}));
+  } catch (e) {
+    out.getException = e.message;
+  }
+  // Verdict : l'écriture a-t-elle pris ? (valeur relue == valeur écrite)
+  out.writeWorks = out.getResult && out.getResult.result === value;
+  res.json(out);
 });
 
 // Historique partagé : lecture (tous les postes voient la même liste).
