@@ -190,18 +190,18 @@ async function confirmOrder(zone, article) {
   zone.innerHTML = `<div class="loading">Envoi de la commande…</div>`;
   try {
     const r = await commande({ articles: [article], confirm: true });
-    // Historique local : on enregistre chaque ligne réellement intégrée.
-    (r.lignes || []).forEach((l) => {
+    // Historique partagé : on enregistre chaque ligne réellement intégrée.
+    for (const l of r.lignes || []) {
       if (l.ok)
-        recordOrder({
+        await recordOrder({
           marque: l.marque || article.marque,
           reference: l.reference || article.reference,
           designation: article.designation,
           quantite: article.quantite,
           numCDE: r.numCDE || "",
         });
-    });
-    renderHistory();
+    }
+    await refreshHistory();
     const lignes = (r.lignes || [])
       .map(
         (l) =>
@@ -274,34 +274,36 @@ function dispoCard(it, quantite = 1) {
   </div>`;
 }
 
-/* ---------- Historique des commandes (localStorage) ---------- */
-// Pas de base de données côté serveur (fonction serverless sans état) : on conserve
-// l'historique des commandes confirmées dans le navigateur.
-const HISTORY_KEY = "pg_orders";
+/* ---------- Historique des commandes (partagé, côté serveur) ---------- */
+// L'historique est stocké côté serveur : tous les postes connectés voient les
+// mêmes commandes (y compris celles passées par les autres utilisateurs).
+let ordersCache = []; // dernière liste reçue du serveur
 
-function loadOrders() {
+async function fetchOrders() {
   try {
-    const v = JSON.parse(localStorage.getItem(HISTORY_KEY));
-    return Array.isArray(v) ? v : [];
+    const data = await api("/api/historique");
+    ordersCache = Array.isArray(data.orders) ? data.orders : [];
   } catch {
-    return [];
+    /* service injoignable : on garde le cache précédent */
   }
+  return ordersCache;
 }
 
-function recordOrder(o) {
-  const list = loadOrders();
-  list.push({
-    ts: Date.now(),
-    reference: o.reference || "",
-    designation: o.designation || "",
-    marque: o.marque || "",
-    quantite: Number(o.quantite) || 1,
-    numCDE: o.numCDE || "",
-  });
+async function recordOrder(o) {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+    await api("/api/historique", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reference: o.reference || "",
+        designation: o.designation || "",
+        marque: o.marque || "",
+        quantite: Number(o.quantite) || 1,
+        numCDE: o.numCDE || "",
+      }),
+    });
   } catch {
-    /* quota plein : on ignore silencieusement */
+    /* on n'interrompt pas le flux de commande si l'enregistrement échoue */
   }
 }
 
@@ -320,11 +322,17 @@ function periodStart(period) {
 
 let histPeriod = "day";
 
+// Récupère la liste à jour depuis le serveur, puis affiche.
+async function refreshHistory() {
+  await fetchOrders();
+  renderHistory();
+}
+
 function renderHistory() {
   const box = $("#history-list");
   if (!box) return;
   const start = periodStart(histPeriod);
-  const rows = loadOrders()
+  const rows = ordersCache
     .filter((o) => o.ts >= start)
     .sort((a, b) => b.ts - a.ts);
 
@@ -385,7 +393,10 @@ if (TOKEN) {
       renderHistory();
     })
   );
-  renderHistory();
+  refreshHistory();
+  // Rafraîchissement régulier : chaque poste voit les commandes des autres
+  // sans avoir à recharger la page.
+  setInterval(refreshHistory, 30000);
 
   checkStatus();
 }
