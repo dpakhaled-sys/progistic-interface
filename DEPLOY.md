@@ -29,8 +29,16 @@ Le repo est déjà sur GitHub. Rien à builder (pas de framework, pas d'étape d
 | `APP_PASS` | *(mot de passe FORT)* | ⚠️ obligatoire |
 | `AUTH_SECRET` | *(64 hex aléatoires)* | ⚠️ voir ci-dessous |
 | `MOCK` | `false` | |
+| `UPSTASH_REDIS_REST_URL` | *(URL REST Upstash)* | ⚠️ historique partagé |
+| `UPSTASH_REDIS_REST_TOKEN` | *(token REST Upstash)* | ⚠️ historique partagé |
 
 > `VERCEL` est défini automatiquement par la plateforme — ne pas l'ajouter.
+
+> **Historique partagé** : sans `UPSTASH_REDIS_REST_URL` **et** `UPSTASH_REDIS_REST_TOKEN`,
+> chaque instance serverless Vercel stocke l'historique dans son propre `/tmp` — chaque
+> poste ne voit alors que ses propres commandes. Crée une base **Upstash Redis** (gratuit)
+> et copie les deux valeurs "REST API" dans ces variables. Pour vérifier en ligne :
+> `GET /api/config` doit renvoyer `"historiqueStore":"redis"` (et non `"fichier"`).
 
 **Générer `AUTH_SECRET`** :
 ```bash

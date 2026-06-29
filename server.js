@@ -625,6 +625,9 @@ app.get("/api/config", (_req, res) => {
     port: CFG.port,
     protocol: CFG.protocol,
     idClient: CFG.idClient,
+    // Backend de l'historique : "redis" = partagé entre tous les postes,
+    // "fichier" = local à l'instance (sur Vercel, chacun voit alors sa propre liste).
+    historiqueStore: UPSTASH_URL && UPSTASH_TOKEN ? "redis" : "fichier",
   });
 });
 
